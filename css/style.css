@@ -470,7 +470,7 @@ ul {
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    background: url('../img/hero-bg.jpg') center/cover no-repeat;
+    background: url('https://res.cloudinary.com/di2dn78lf/image/upload/v1781981881/hero-bg_grjd4d.jpg') center/cover no-repeat;
     color: var(--white);
     padding-top: 120px;
 }
