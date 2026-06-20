@@ -163,19 +163,26 @@
     var featuredDisplay = document.getElementById('featuredDisplay');
     var thumbs = document.querySelectorAll('.project-thumb');
 
+    // Point the big display's link at a project's URL
+    function setFeaturedLink(link) {
+        if (featuredDisplay) {
+            featuredDisplay.setAttribute('href', link && link.trim() ? link : '#');
+        }
+    }
+
     thumbs.forEach(function (thumb) {
         thumb.addEventListener('click', function () {
             var full = thumb.getAttribute('data-full');
             var name = thumb.getAttribute('data-name');
 
-            // swap the big featured image + its link
+            // swap the big featured image
             if (featuredImage) {
                 featuredImage.src = full;
                 featuredImage.alt = name;
             }
-            if (featuredDisplay) {
-                featuredDisplay.setAttribute('href', full);
-            }
+
+            // point the big image's link at this project
+            setFeaturedLink(thumb.getAttribute('data-link'));
 
             // highlight the active card
             thumbs.forEach(function (t) { t.classList.remove('active'); });
@@ -183,8 +190,35 @@
         });
     });
 
+    // Initialise the link to match whichever project image is shown on load
+    if (featuredImage && featuredDisplay) {
+        var currentSrc = featuredImage.getAttribute('src');
+        thumbs.forEach(function (t) {
+            if (t.getAttribute('data-full') === currentSrc) {
+                setFeaturedLink(t.getAttribute('data-link'));
+            }
+        });
+    }
+
     /* ---------------------------------------------------------------------
-       6. Form validation (no backend)
+       6. Form input icons — hide the inner icon when focused or filled
+       --------------------------------------------------------------------- */
+    var inputWraps = document.querySelectorAll('.input-wrap');
+    inputWraps.forEach(function (wrap) {
+        var input = wrap.querySelector('input');
+        if (!input) return;
+        function updateIcon() {
+            var active = document.activeElement === input || input.value.trim() !== '';
+            wrap.classList.toggle('hide-ico', active);
+        }
+        input.addEventListener('focus', updateIcon);
+        input.addEventListener('blur', updateIcon);
+        input.addEventListener('input', updateIcon);
+        updateIcon();
+    });
+
+    /* ---------------------------------------------------------------------
+       7. Form validation (no backend)
        --------------------------------------------------------------------- */
     var form = document.getElementById('quoteForm');
     var success = document.getElementById('formSuccess');
@@ -208,6 +242,10 @@
             if (valid) {
                 success.classList.add('show');
                 form.reset();
+                // bring the input icons back now the fields are empty
+                form.querySelectorAll('.input-wrap').forEach(function (w) {
+                    w.classList.remove('hide-ico');
+                });
                 setTimeout(function () { success.classList.remove('show'); }, 6000);
             }
         });
@@ -217,6 +255,100 @@
             field.addEventListener('input', function () {
                 field.classList.remove('error');
             });
+        });
+    }
+
+    /* ---------------------------------------------------------------------
+       8. Scroll reveal animations + count-up (purely visual, additive)
+       --------------------------------------------------------------------- */
+    var reduceMotion = window.matchMedia &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!reduceMotion && 'IntersectionObserver' in window) {
+        document.body.classList.add('anim-ready');
+
+        // Tag elements with reveal classes (+ optional stagger delay)
+        function reveal(selector, type, stagger) {
+            var els = document.querySelectorAll(selector);
+            els.forEach(function (el, i) {
+                el.classList.add('reveal');
+                if (type) el.classList.add(type);
+                if (stagger) el.style.transitionDelay = ((i % 6) * 90) + 'ms';
+            });
+        }
+
+        reveal('.about-image', 'reveal-left');
+        reveal('.about-panel-inner', 'reveal-right');
+        reveal('.section-head');
+        reveal('.why-col', null, true);
+        reveal('.why-lower-img', 'reveal-left');
+        reveal('.why-lower-text', 'reveal-right');
+        reveal('.wwd-card', null, true);
+        reveal('.reviews-head');
+        reveal('.reviews-carousel');
+        reveal('.featured-display', 'reveal-zoom');
+        reveal('.project-thumb', null, true);
+        reveal('.cta-content');
+        reveal('.quote-left', 'reveal-left');
+        reveal('.quote-right', 'reveal-right');
+        reveal('.git-card', null, true);
+        reveal('.bt-item', null, true);
+        reveal('.footer-inner');
+
+        var revealObserver = new IntersectionObserver(function (entries, obs) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                var el = entry.target;
+                el.classList.add('in-view');
+                obs.unobserve(el);
+                // Once the entrance finishes, strip the reveal classes so the
+                // element returns to its original CSS (no leftover delay/transform).
+                el.addEventListener('transitionend', function te(ev) {
+                    if (ev.propertyName !== 'opacity') return;
+                    el.style.transitionDelay = '';
+                    el.style.willChange = '';
+                    el.classList.remove('reveal', 'reveal-left', 'reveal-right', 'reveal-zoom', 'in-view');
+                    el.removeEventListener('transitionend', te);
+                });
+            });
+        }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
+        document.querySelectorAll('.reveal').forEach(function (el) {
+            revealObserver.observe(el);
+        });
+
+        // Count-up for stat numbers (preserves any prefix/suffix like "+" )
+        function countUp(el) {
+            var raw = el.textContent.trim();
+            var m = raw.match(/^([^\d]*)(\d+(?:\.\d+)?)(.*)$/);
+            if (!m) return; // e.g. "FREE" — leave untouched
+            var prefix = m[1], target = parseFloat(m[2]), suffix = m[3];
+            var decimals = (m[2].split('.')[1] || '').length;
+            var duration = 1400, startTime = null;
+            function tick(now) {
+                if (startTime === null) startTime = now;
+                var p = Math.min((now - startTime) / duration, 1);
+                var eased = 1 - Math.pow(1 - p, 3);
+                el.textContent = prefix + (target * eased).toFixed(decimals) + suffix;
+                if (p < 1) {
+                    requestAnimationFrame(tick);
+                } else {
+                    el.textContent = prefix + target.toFixed(decimals) + suffix;
+                }
+            }
+            requestAnimationFrame(tick);
+        }
+
+        var statObserver = new IntersectionObserver(function (entries, obs) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                countUp(entry.target);
+                obs.unobserve(entry.target);
+            });
+        }, { threshold: 0.6 });
+
+        document.querySelectorAll('.stat-num').forEach(function (el) {
+            statObserver.observe(el);
         });
     }
 
