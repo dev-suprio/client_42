@@ -1,30 +1,31 @@
 <?php
 /* ============================================================
- *  CozyFeet — quote form mail handler
- *  Receives the quote form (JSON via fetch) and emails it to
- *  the address in $TO. Self-hosted — no third-party service.
+ *  CozyFeet — quote form mail handler (SMTP)
+ *  Sends the quote form straight through the contact@ mailbox
+ *  via authenticated SMTP. Self-contained — no library needed.
  * ============================================================ */
 
-// Where enquiries are delivered.
-$TO = 'contact@cozyfeetuk.co.uk';
+/* ---------- SETTINGS — fill these in ------------------------ */
+$SMTP_HOST = 'cozyfeetuk.co.uk';          // Outgoing server
+$SMTP_PORT = 465;                         // 465 = SSL
+$SMTP_USER = 'contact@cozyfeetuk.co.uk';  // mailbox login
+$SMTP_PASS = '9]bx[]C8Db#[WJ?9'; // <-- the contact@ mailbox password
+$TO        = 'contact@cozyfeetuk.co.uk';  // where enquiries are delivered
+/* ------------------------------------------------------------ */
 
 header('Content-Type: application/json; charset=utf-8');
 
-// Only allow POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['success' => false, 'message' => 'Method not allowed']);
     exit;
 }
 
-// Accept either JSON body or normal form-encoded POST
+// Accept JSON body or form-encoded POST
 $raw  = file_get_contents('php://input');
 $data = json_decode($raw, true);
-if (!is_array($data)) {
-    $data = $_POST;
-}
+if (!is_array($data)) { $data = $_POST; }
 
-// Grab + clean the fields
 function clean($v) { return trim(filter_var($v ?? '', FILTER_SANITIZE_FULL_SPECIAL_CHARS)); }
 
 $name     = clean($data['name']     ?? '');
@@ -33,48 +34,85 @@ $phone    = clean($data['phone']    ?? '');
 $location = clean($data['location'] ?? '');
 $message  = clean($data['message']  ?? '');
 
-// Basic validation (mirrors the front-end)
 if ($name === '' || $phone === '' || $location === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'Please fill in all required fields correctly.']);
     exit;
 }
 
-// Build the email
-$subject = 'New Free Quote Request — CozyFeet Website';
+/* ---------- Build the message ------------------------------- */
+$subject = 'New Free Quote Request - CozyFeet Website';
 
-$body  = "You have received a new quote request from the CozyFeet website:\n\n";
-$body .= "Name:     $name\n";
-$body .= "Email:    $email\n";
-$body .= "Phone:    $phone\n";
-$body .= "Location: $location\n";
-$body .= "Message:\n$message\n\n";
-$body .= "----------------------------------------\n";
-$body .= "Sent automatically from cozyfeetuk.co.uk\n";
+$body  = "You have received a new quote request from the CozyFeet website:\r\n\r\n";
+$body .= "Name:     $name\r\n";
+$body .= "Email:    $email\r\n";
+$body .= "Phone:    $phone\r\n";
+$body .= "Location: $location\r\n";
+$body .= "Message:\r\n$message\r\n\r\n";
+$body .= "----------------------------------------\r\n";
+$body .= "Sent automatically from cozyfeetuk.co.uk\r\n";
 
-// Headers — "From" MUST be a real mailbox that exists on this server,
-// otherwise cPanel's Exim sender-verification silently drops the mail
-// even though mail() returns true. We use the same mailbox we deliver to.
-// Reply-To is set to the visitor so you can reply straight back to them.
-$fromAddress = 'contact@cozyfeetuk.co.uk';
-$headers  = "From: CozyFeet Website <$fromAddress>\r\n";
+$fromName = 'CozyFeet Website';
+$headers  = "From: $fromName <$SMTP_USER>\r\n";
 $headers .= "Reply-To: $name <$email>\r\n";
+$headers .= "Date: " . date('r') . "\r\n";
+$headers .= "Subject: $subject\r\n";
 $headers .= "MIME-Version: 1.0\r\n";
 $headers .= "Content-Type: text/plain; charset=utf-8\r\n";
-$headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
+$headers .= "Content-Transfer-Encoding: 8bit\r\n";
 
-// Send (envelope sender = real mailbox to pass SPF/sender checks)
-$sent = @mail($TO, $subject, $body, $headers, "-f$fromAddress");
+/* ---------- Minimal SMTP client ----------------------------- */
+function smtp_send($host, $port, $user, $pass, $from, $to, $headers, $body, &$err) {
+    $transport = ($port == 465) ? "ssl://$host" : $host;
+    $fp = @fsockopen($transport, $port, $errno, $errstr, 20);
+    if (!$fp) { $err = "Connect failed: $errstr ($errno)"; return false; }
+    stream_set_timeout($fp, 20);
 
-// Log every attempt so delivery problems can be diagnosed from the server.
+    $read = function () use ($fp) {
+        $data = '';
+        while ($line = fgets($fp, 515)) {
+            $data .= $line;
+            if (isset($line[3]) && $line[3] === ' ') break;
+        }
+        return $data;
+    };
+    $cmd = function ($c) use ($fp, $read) { fputs($fp, $c . "\r\n"); return $read(); };
+
+    $expect = function ($resp, $code) use (&$err, $fp) {
+        if (strpos($resp, $code) !== 0) { $err = trim($resp); fclose($fp); return false; }
+        return true;
+    };
+
+    if (!$expect($read(), '220')) return false;
+    if (!$expect($cmd('EHLO cozyfeetuk.co.uk'), '250')) return false;
+    if (!$expect($cmd('AUTH LOGIN'), '334')) return false;
+    if (!$expect($cmd(base64_encode($user)), '334')) return false;
+    if (!$expect($cmd(base64_encode($pass)), '235')) return false;
+    if (!$expect($cmd("MAIL FROM:<$user>"), '250')) return false;
+    if (!$expect($cmd("RCPT TO:<$to>"), '250')) return false;
+    if (!$expect($cmd('DATA'), '354')) return false;
+
+    // dot-stuffing for any line that starts with "."
+    $payload = "To: $to\r\n" . $headers . "\r\n" . $body;
+    $payload = preg_replace('/^\./m', '..', $payload);
+    fputs($fp, $payload . "\r\n.\r\n");
+    if (!$expect($read(), '250')) return false;
+
+    $cmd('QUIT');
+    fclose($fp);
+    return true;
+}
+
+$err = '';
+$ok  = smtp_send($SMTP_HOST, $SMTP_PORT, $SMTP_USER, $SMTP_PASS, $SMTP_USER, $TO, $headers, $body, $err);
+
 @file_put_contents(
     __DIR__ . '/mail_log.txt',
-    date('Y-m-d H:i:s') . " | sent=" . ($sent ? 'TRUE' : 'FALSE') .
-        " | to=$TO | from=$email ($name)\n",
+    date('Y-m-d H:i:s') . ' | ' . ($ok ? 'SENT' : 'FAIL: ' . $err) . " | from=$email ($name)\r\n",
     FILE_APPEND
 );
 
-if ($sent) {
+if ($ok) {
     echo json_encode(['success' => true, 'message' => 'Sent']);
 } else {
     http_response_code(500);
