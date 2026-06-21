@@ -1,0 +1,37 @@
+# ============================================================
+#  CozyFeet — server configuration (.htaccess)
+#  Fixes the LiteSpeed/Apache directory-listing page that was
+#  appearing in Google instead of the homepage.
+# ============================================================
+
+# --- 1. Serve index.html as the default document ------------
+DirectoryIndex index.html index.htm
+
+# --- 2. Disable directory listing (no "Name / Last Modified / Size") ---
+Options -Indexes
+
+# --- 3. Canonical domain: force HTTPS + www -----------------
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Force HTTPS
+    RewriteCond %{HTTPS} off [OR]
+    # Force www
+    RewriteCond %{HTTP_HOST} ^cozyfeetuk\.co\.uk [NC]
+    RewriteRule ^(.*)$ https://www.cozyfeetuk.co.uk/$1 [L,R=301]
+</IfModule>
+
+# --- 4. Custom 404 fallback to homepage --------------------
+ErrorDocument 404 /index.html
+
+# --- 5. Sensible caching for static assets -----------------
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/x-icon "access plus 1 year"
+</IfModule>
