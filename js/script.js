@@ -259,7 +259,42 @@
     }
 
     /* ---------------------------------------------------------------------
-       8. Scroll reveal animations + count-up (purely visual, additive)
+       8. FAQ accordion
+       --------------------------------------------------------------------- */
+    var faqItems = document.querySelectorAll('.faq-item');
+    faqItems.forEach(function (item) {
+        var btn = item.querySelector('.faq-q');
+        var answer = item.querySelector('.faq-a');
+        if (!btn || !answer) return;
+
+        btn.addEventListener('click', function () {
+            var isOpen = item.classList.contains('open');
+
+            // close any other open item (single-open accordion)
+            faqItems.forEach(function (other) {
+                if (other !== item && other.classList.contains('open')) {
+                    other.classList.remove('open');
+                    var oBtn = other.querySelector('.faq-q');
+                    var oAns = other.querySelector('.faq-a');
+                    if (oBtn) oBtn.setAttribute('aria-expanded', 'false');
+                    if (oAns) oAns.style.maxHeight = null;
+                }
+            });
+
+            if (isOpen) {
+                item.classList.remove('open');
+                btn.setAttribute('aria-expanded', 'false');
+                answer.style.maxHeight = null;
+            } else {
+                item.classList.add('open');
+                btn.setAttribute('aria-expanded', 'true');
+                answer.style.maxHeight = answer.scrollHeight + 'px';
+            }
+        });
+    });
+
+    /* ---------------------------------------------------------------------
+       9. Scroll reveal animations + count-up (purely visual, additive)
        --------------------------------------------------------------------- */
     var reduceMotion = window.matchMedia &&
         window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -288,6 +323,7 @@
         reveal('.reviews-carousel');
         reveal('.featured-display', 'reveal-zoom');
         reveal('.project-thumb', null, true);
+        reveal('.faq-item', null, true);
         reveal('.cta-content');
         reveal('.quote-left', 'reveal-left');
         reveal('.quote-right', 'reveal-right');
