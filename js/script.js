@@ -218,12 +218,19 @@
     });
 
     /* ---------------------------------------------------------------------
-       7. Form validation (no backend)
+       7. Form validation + email submission (FormSubmit.co — no backend)
        --------------------------------------------------------------------- */
     var form = document.getElementById('quoteForm');
     var success = document.getElementById('formSuccess');
 
+    // Self-hosted PHP mailer (sends to contact@cozyfeetuk.co.uk).
+    // To change the recipient, edit the $TO address in sendmail.php.
+    var FORM_ENDPOINT = 'sendmail.php';
+
     if (form) {
+        var submitBtn = form.querySelector('.form-submit');
+        var btnDefaultHTML = submitBtn ? submitBtn.innerHTML : '';
+
         form.addEventListener('submit', function (e) {
             e.preventDefault();
             var required = form.querySelectorAll('[required]');
@@ -239,15 +246,58 @@
                 if (!ok) valid = false;
             });
 
-            if (valid) {
-                success.classList.add('show');
-                form.reset();
-                // bring the input icons back now the fields are empty
-                form.querySelectorAll('.input-wrap').forEach(function (w) {
-                    w.classList.remove('hide-ico');
-                });
-                setTimeout(function () { success.classList.remove('show'); }, 6000);
+            if (!valid) return;
+
+            // build the payload
+            var payload = {
+                name: form.name.value.trim(),
+                email: form.email.value.trim(),
+                phone: form.phone.value.trim(),
+                location: form.location.value.trim(),
+                message: form.message.value.trim()
+            };
+
+            // loading state
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = 'SENDING…';
             }
+
+            fetch(FORM_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data && (data.success === true || data.success === 'true')) {
+                    success.textContent = 'Thank you! Your request has been sent — we\'ll be in touch within 24 hours.';
+                    success.classList.add('show');
+                    success.classList.remove('error-msg');
+                    form.reset();
+                    // bring the input icons back now the fields are empty
+                    form.querySelectorAll('.input-wrap').forEach(function (w) {
+                        w.classList.remove('hide-ico');
+                    });
+                    setTimeout(function () { success.classList.remove('show'); }, 6000);
+                } else {
+                    throw new Error('Mailer rejected the request');
+                }
+            })
+            .catch(function () {
+                success.textContent = 'Sorry, something went wrong. Please call us on 07500 941315 or email contact@cozyfeetuk.co.uk.';
+                success.classList.add('show', 'error-msg');
+                setTimeout(function () { success.classList.remove('show', 'error-msg'); }, 8000);
+            })
+            .then(function () {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = btnDefaultHTML;
+                }
+            });
         });
 
         // clear error state as the user types
