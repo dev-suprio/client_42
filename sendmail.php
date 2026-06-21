@@ -52,16 +52,27 @@ $body .= "Message:\n$message\n\n";
 $body .= "----------------------------------------\n";
 $body .= "Sent automatically from cozyfeetuk.co.uk\n";
 
-// Headers — send "From" your own domain so it isn't flagged as spoofed,
-// and set Reply-To to the visitor so you can reply straight to them.
-$fromAddress = 'no-reply@cozyfeetuk.co.uk';
+// Headers — "From" MUST be a real mailbox that exists on this server,
+// otherwise cPanel's Exim sender-verification silently drops the mail
+// even though mail() returns true. We use the same mailbox we deliver to.
+// Reply-To is set to the visitor so you can reply straight back to them.
+$fromAddress = 'contact@cozyfeetuk.co.uk';
 $headers  = "From: CozyFeet Website <$fromAddress>\r\n";
 $headers .= "Reply-To: $name <$email>\r\n";
+$headers .= "MIME-Version: 1.0\r\n";
 $headers .= "Content-Type: text/plain; charset=utf-8\r\n";
 $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
 
-// Send
+// Send (envelope sender = real mailbox to pass SPF/sender checks)
 $sent = @mail($TO, $subject, $body, $headers, "-f$fromAddress");
+
+// Log every attempt so delivery problems can be diagnosed from the server.
+@file_put_contents(
+    __DIR__ . '/mail_log.txt',
+    date('Y-m-d H:i:s') . " | sent=" . ($sent ? 'TRUE' : 'FALSE') .
+        " | to=$TO | from=$email ($name)\n",
+    FILE_APPEND
+);
 
 if ($sent) {
     echo json_encode(['success' => true, 'message' => 'Sent']);
