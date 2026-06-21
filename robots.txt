@@ -1,4 +1,4 @@
-# robots.txt for CozyFeet — https://www.cozyfeet.co.uk/
+# robots.txt for CozyFeet — https://www.cozyfeetuk.co.uk/
 User-agent: *
 Allow: /
 
@@ -6,4 +6,4 @@ Allow: /
 Disallow:
 
 # Point crawlers to the sitemap
-Sitemap: https://www.cozyfeet.co.uk/sitemap.xml
+Sitemap: https://www.cozyfeetuk.co.uk/sitemap.xml
